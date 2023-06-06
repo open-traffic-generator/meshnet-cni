@@ -147,9 +147,10 @@ func GetWireByUID(namespace string, linkUID int) (*GRPCWire, bool) {
 	return wires.GetWire(namespace, linkUID)
 }
 
-// For the given uid if the wire exists, then update the wire properties.
+// UpdateWireByUIDInMemNDataStore checks if a wire for the given uid exists. If exists then update the
+// in-memory wire properties and update the k8s data-store.
 // Returns true if a wire exists, also the wire structure that got modified
-func UpdateWireByUID(namespace string, linkUID int, peerIntfId int64, stopC chan struct{}) (*GRPCWire, bool) {
+func UpdateWireByUIDInMemNDataStore(namespace string, linkUID int, peerIntfId int64, stopC chan struct{}) (*GRPCWire, bool) {
 	wires.mu.Lock()
 	defer wires.mu.Unlock()
 	wire, ok := wires.wires[linkKey{
@@ -158,10 +159,11 @@ func UpdateWireByUID(namespace string, linkUID int, peerIntfId int64, stopC chan
 	}]
 	if ok {
 		wire.StopC = stopC
-		if !wire.IsReady {
+		if !wire.IsReady { //+++TODO: should we check this???
 			wire.WireIfaceIDOnPeerNode = peerIntfId
 		}
 		wire.IsReady = true
+		wire.K8sUpdateGWire()
 	}
 	return wire, ok
 }

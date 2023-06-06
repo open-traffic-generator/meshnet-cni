@@ -104,7 +104,7 @@ func CreateWireStatus(wire *GRPCWire, nodeName string) *grpcwirev1.GWireStatus {
 
 // -----------------------------------------------------------------------------------------------------------
 // K8sStoreGWire writes grpc wire info 'wire' for a specific topology namespace (wire.TopoNamespace) into k8s
-// data-store for the current node. It calls updateGRPCWireStatus() to serve the purpose
+// data-store for the current node. It calls appendGRPCWireStatus() to serve the purpose
 func (wire *GRPCWire) K8sStoreGWire() error {
 	nodeName, err := findNodeName()
 	if err != nil {
@@ -114,10 +114,30 @@ func (wire *GRPCWire) K8sStoreGWire() error {
 
 	ctx := context.Background()
 	ws := CreateWireStatus(wire, nodeName)
-	err = updateGRPCWireStatus(ctx, ws)
+	err = appendGRPCWireStatus(ctx, ws)
 
 	if err != nil {
 		grpcOvrlyLogger.Errorf("K8sStoreGWire: Failed to set status for node %s: %v", nodeName, err)
+	}
+	return nil
+}
+
+// -----------------------------------------------------------------------------------------------------------
+// K8sUpdateGWire updates grpc wire info 'wire' for a specific topology namespace (wire.TopoNamespace) into k8s
+// data-store for the current node. It calls updateGRPCWireStatus() to serve the purpose
+func (wire *GRPCWire) K8sUpdateGWire() error {
+	nodeName, err := findNodeName()
+	if err != nil {
+		grpcOvrlyLogger.Errorf("K8sUpdateGWire: could not get node name: %v", err)
+		return err
+	}
+
+	ctx := context.Background()
+	ws := CreateWireStatus(wire, nodeName)
+	err = updateGRPCWireStatus(ctx, ws)
+
+	if err != nil {
+		grpcOvrlyLogger.Errorf("K8sUpdateGWire: Failed to set status for node %s: %v", nodeName, err)
 	}
 	return nil
 }
@@ -208,13 +228,13 @@ func ReconGWires() error {
 }
 
 // -----------------------------------------------------------------------------------------------------------
-// updateGRPCWireStatus writes grpc wire 'wStatus' into k8s data-store. 'wStatus' for all existing grpc wires are added
+// appendGRPCWireStatus writes grpc wire 'wStatus' into k8s data-store. 'wStatus' for all existing grpc wires are added
 // under 'grpcWireItems' as part of status. Status is part of 'GWireKObj' and identified
 // by name=<current-node-name>. For the first write, this object for a node does not exist in k8s data-
 // store. So for first write, it creates the object and then adds the 'wStatus'. For all subsequent 'wStatus'
 // to be added, first get the object from data-store, append the 'wStatus' to the existing list of
 // 'grpcWireItems' and write the updated 'grpcWireItems' list back to k8s api data-store.
-func updateGRPCWireStatus(ctx context.Context, wStatus *grpcwirev1.GWireStatus) error {
+func appendGRPCWireStatus(ctx context.Context, wStatus *grpcwirev1.GWireStatus) error {
 	grpcOvrlyLogger.Infof("Updating GRPC wire status on node %s, pod %s@%s", wStatus.LocalNodeName, wStatus.LocalPodName, wStatus.LocalPodIfaceName)
 
 	retryErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
@@ -229,7 +249,7 @@ func updateGRPCWireStatus(ctx context.Context, wStatus *grpcwirev1.GWireStatus) 
 				if err != nil {
 					return err
 				}
-				grpcOvrlyLogger.Infof("updateGRPCWireStatus: Created node %s, pod %s@%s into k8s data-store",
+				grpcOvrlyLogger.Infof("appendGRPCWireStatus: Created node %s, pod %s@%s into k8s data-store",
 					wStatus.LocalNodeName, wStatus.LocalPodName, wStatus.LocalPodIfaceName)
 				return nil
 			}
@@ -237,6 +257,68 @@ func updateGRPCWireStatus(ctx context.Context, wStatus *grpcwirev1.GWireStatus) 
 			return err // for all error expect 'not found' return the error
 		}
 
+		// extract status gwire items
+		gwireItems, found, err := unstructured.NestedSlice(wObjsOnNd.Object, kStatus, kGrpcWireItems)
+		if err != nil {
+			grpcOvrlyLogger.Errorf("appendGRPCWireStatus: could not retrieve gWireItems: %v", err)
+			return err
+		}
+		if !found {
+			grpcOvrlyLogger.Errorf("appendGRPCWireStatus: gwireItems not found in GWireKObj status")
+			return err
+		}
+		if gwireItems == nil {
+			grpcOvrlyLogger.Errorf("appendGRPCWireStatus: gwireItems is nil in GWireKObj status")
+			return err
+		}
+		newItem, err := runtime.DefaultUnstructuredConverter.ToUnstructured(wStatus)
+		if err != nil {
+			grpcOvrlyLogger.Errorf("appendGRPCWireStatus: could not convert to unstructured: %v\n", err)
+			return err
+		}
+		gwireItems = append(gwireItems, newItem)
+
+		if err := unstructured.SetNestedField(wObjsOnNd.Object, gwireItems, kStatus, kGrpcWireItems); err != nil {
+			grpcOvrlyLogger.Errorf("appendGRPCWireStatus: could not set grpcwireitems status: %v", err)
+			return err
+		}
+
+		_, err = gWClient.UpdateWireObj(ctx, wStatus.TopoNamespace, wObjsOnNd)
+		if err != nil {
+			grpcOvrlyLogger.Infof("appendGRPCWireStatus: Could not update GRPCWire status for node %s, pod %s@%s into K8s",
+				wObjsOnNd.GetName(), wStatus.LocalPodName, wStatus.LocalPodIfaceName)
+			return err
+		}
+		return nil
+
+	})
+	if retryErr != nil {
+		log.WithFields(log.Fields{
+			"daemon":   "meshnetd",
+			"err":      retryErr,
+			"function": "appendGRPCWireStatus",
+		}).Errorf("Failed to update status on node %s, pod %s@%s", wStatus.LocalNodeName, wStatus.LocalPodName, wStatus.LocalPodIfaceName)
+		return retryErr
+	}
+
+	return nil
+}
+
+// -----------------------------------------------------------------------------------------------------------
+// updateGRPCWireStatus updates grpc wire 'wStatus' into k8s data-store. 'wStatus' is updated under 'grpcWireItems'
+// as part of status. Status is part of 'GWireKObj' and identified by name=<current-node-name>. It first get the
+// object from data-store, find the correct item, update it with 'wStatus' and write the updated item list back to
+// k8s api data-store.
+func updateGRPCWireStatus(ctx context.Context, wStatus *grpcwirev1.GWireStatus) error {
+	grpcOvrlyLogger.Infof("updateGRPCWireStatus: Updating GRPC wire status on node %s, pod %s@%s", wStatus.LocalNodeName, wStatus.LocalPodName, wStatus.LocalPodIfaceName)
+
+	retryErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+
+		// wires are grouped by node name. retrieve the group for this node 'wStatus.LocalNodeName'
+		wObjsOnNd, err := gWClient.GetWireObjGrpUS(ctx, wStatus)
+		if err != nil {
+			return err // for all error return the error
+		}
 		// extract status gwire items
 		gwireItems, found, err := unstructured.NestedSlice(wObjsOnNd.Object, kStatus, kGrpcWireItems)
 		if err != nil {
@@ -251,14 +333,30 @@ func updateGRPCWireStatus(ctx context.Context, wStatus *grpcwirev1.GWireStatus) 
 			grpcOvrlyLogger.Errorf("updateGRPCWireStatus: gwireItems is nil in GWireKObj status")
 			return err
 		}
-		newItem, err := runtime.DefaultUnstructuredConverter.ToUnstructured(wStatus)
-		if err != nil {
-			grpcOvrlyLogger.Errorf("updateGRPCWireStatus: could not convert to unstructured: %v\n", err)
-			return err
-		}
-		gwireItems = append(gwireItems, newItem)
 
-		if err := unstructured.SetNestedField(wObjsOnNd.Object, gwireItems, kStatus, kGrpcWireItems); err != nil {
+		newSList := []interface{}{}
+		for _, gwireItem := range gwireItems {
+			gwireStatusItem, ok := gwireItem.(map[string]interface{})
+			if !ok {
+				log.Errorf("updateGRPCWireStatus: unable to retrieve status, %v is not a map", gwireItem)
+				continue
+			}
+			gwireStatus := grpcwirev1.GWireStatus{}
+			if err := runtime.DefaultUnstructuredConverter.FromUnstructured(gwireStatusItem, &gwireStatus); err != nil {
+				log.Errorf("updateGRPCWireStatus: unable to convert status from object: %v", err)
+				continue
+			}
+			if gwireStatus.LinkId == wStatus.LinkId {
+				gwireStatusItem, err = runtime.DefaultUnstructuredConverter.ToUnstructured(&wStatus)
+				if err != nil {
+					log.Errorf("updateGRPCWireStatus: unable to convert status to object: %v", err)
+					continue
+				}
+			}
+			newSList = append(newSList, gwireStatusItem)
+		}
+
+		if err := unstructured.SetNestedField(wObjsOnNd.Object, newSList, kStatus, kGrpcWireItems); err != nil {
 			grpcOvrlyLogger.Errorf("updateGRPCWireStatus: could not set grpcwireitems status: %v", err)
 			return err
 		}
@@ -270,7 +368,6 @@ func updateGRPCWireStatus(ctx context.Context, wStatus *grpcwirev1.GWireStatus) 
 			return err
 		}
 		return nil
-
 	})
 	if retryErr != nil {
 		log.WithFields(log.Fields{

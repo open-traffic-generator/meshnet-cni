@@ -73,7 +73,7 @@ func CreateUpdateGRPCWireRemoteTriggered(wireDef *mpb.WireDef, stopC chan struct
 	// This can happen due to a race between the local and remote peer.
 	// This can also happen when a pod in one end of the wire is deleted and created again.
 	// In all cases link creation happen only once but it can get updated multiple times.
-	grpcWire, ok := UpdateWireByUID(wireDef.LocalPodNetNs, int(wireDef.LinkUid), wireDef.WireIfIdOnPeerNode, stopC)
+	grpcWire, ok := UpdateWireByUIDInMemNDataStore(wireDef.LocalPodNetNs, int(wireDef.LinkUid), wireDef.WireIfIdOnPeerNode, stopC)
 	if ok {
 		grpcOvrlyLogger.Infof("[CREATE-UPDATE-WIRE] At remote end this grpc-wire is already created by %s. Local interface id : %d peer interface id : %d", grpcWire.Originator, grpcWire.LocalNodeIfaceID, grpcWire.WireIfaceIDOnPeerNode)
 		return grpcWire, nil
@@ -113,9 +113,15 @@ func CreateUpdateGRPCWireRemoteTriggered(wireDef *mpb.WireDef, stopC chan struct
 		}}
 	}
 
-	if err = koko.MakeVeth(inContainerVeth, hostEndVeth); err != nil {
-		grpcOvrlyLogger.Errorf("[ADD-WIRE:REMOTE-END] Error creating vEth pair (in:%s <--> out:%s).  Error-> %s", inIfNm, outIfNm, err)
-		return nil, err
+	_, err = net.InterfaceByName(inContainerVeth.LinkName)
+	if err == nil {
+		// reuse this interface
+		grpcOvrlyLogger.Infof("[ADD-WIRE:REMOTE-END] vEth pair exist (in:%s <--> out:%s)", inIfNm, outIfNm)
+	} else {
+		if err = koko.MakeVeth(inContainerVeth, hostEndVeth); err != nil {
+			grpcOvrlyLogger.Errorf("[ADD-WIRE:REMOTE-END] Error creating vEth pair (in:%s <--> out:%s).  Error-> %s", inIfNm, outIfNm, err)
+			return nil, err
+		}
 	}
 	if err := wireutil.SetTxChecksumOff(inContainerVeth.LinkName, inContainerVeth.NsName); err != nil {
 		grpcOvrlyLogger.Errorf("Error in setting tx checksum-off on interface %s, pod %s: %v", inContainerVeth.LinkName, wireDef.LocalPodName, err)

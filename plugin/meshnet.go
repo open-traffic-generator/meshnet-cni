@@ -190,8 +190,8 @@ func cmdAdd(args *skel.CmdArgs) error {
 		KubeNs: string(cniArgs.K8S_POD_NAMESPACE),
 	})
 	if err != nil {
-		log.Errorf("Add: Pod %s:%s was not a topology pod returning", string(cniArgs.K8S_POD_NAMESPACE), string(cniArgs.K8S_POD_NAME))
-		return types.PrintResult(result, n.CNIVersion)
+		log.Errorf("Add: Pod %s:%s was not a topology pod returning, err: %v", string(cniArgs.K8S_POD_NAMESPACE), string(cniArgs.K8S_POD_NAME), err)
+		return err
 	}
 
 	// Finding the source IP and interface for VXLAN VTEP
@@ -208,7 +208,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 	log.Infof("Add[%s]: Setting pod alive status on meshnet daemon", string(cniArgs.K8S_POD_NAME))
 	ok, err := meshnetClient.SetAlive(ctx, localPod)
 	if err != nil || !ok.Response {
-		log.Errorf("Add[%s]: Failed to set pod alive status", string(cniArgs.K8S_POD_NAME))
+		log.Errorf("Add[%s]: Failed to set pod alive status, err: %v", string(cniArgs.K8S_POD_NAME), err)
 		return err
 	}
 
@@ -395,7 +395,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 				KubeNs: string(cniArgs.K8S_POD_NAMESPACE),
 			})
 			if err != nil || !ok.Response {
-				log.Errorf("Add[%s]: Failed to set a skipped flag on peer %s", string(cniArgs.K8S_POD_NAME), peerPod.Name)
+				log.Errorf("Add[%s]: Failed to set a skipped flag on peer %s, response %T, err: %v", string(cniArgs.K8S_POD_NAME), peerPod.Name, ok.Response, err)
 				return err
 			}
 		}
@@ -421,7 +421,7 @@ func cmdDel(args *skel.CmdArgs) error {
 		"args": fmt.Sprintf("%+v", args),
 	}).Info("DEL request arguments")
 	log.Info("Parsing cni .conf file")
-	n, result, err := loadConf(args.StdinData)
+	_, _, err := loadConf(args.StdinData)
 	if err != nil {
 		return err
 	}
@@ -442,7 +442,7 @@ func cmdDel(args *skel.CmdArgs) error {
 	})
 	if err != nil {
 		log.Infof("Del: Pod %s:%s is not in topology returning. err:%v", string(cniArgs.K8S_POD_NAMESPACE), string(cniArgs.K8S_POD_NAME), err)
-		return types.PrintResult(result, n.CNIVersion)
+		return err
 	}
 	// if the current containerID is not the topo's current containerID, exit here b/c this is a duplicated DEL call.
 	if localPod.ContainerId != args.ContainerID {
