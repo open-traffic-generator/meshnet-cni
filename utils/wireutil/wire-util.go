@@ -11,6 +11,7 @@ const (
 	GRPCDefaultPort       = 51111
 	INTER_NODE_LINK_VXLAN = "VXLAN"
 	INTER_NODE_LINK_GRPC  = "GRPC"
+	GRPC_IFACE_MTU        = 9000
 )
 
 func SetTxChecksumOff(intfName, nsName string) error {

@@ -19,6 +19,7 @@ const (
 	defaultCNIFile    = "00-meshnet.conflist"
 	interNodeLinkConf = "/etc/cni/net.d/meshnet-inter-node-link-type"
 	defaultPluginName = "meshnet"
+	grpcLinkMtuConf   = "/etc/cni/net.d/meshnet-grpc-link-mtu"
 )
 
 var meshnetCNIPath = filepath.Join(defaultNetDir, defaultCNIFile)
@@ -100,9 +101,20 @@ func saveInterNodeLinkConf() error {
 	return ioutil.WriteFile(interNodeLinkConf, []byte(os.Getenv("INTER_NODE_LINK_TYPE")), os.FileMode(06444))
 }
 
+func saveGrpcLinkMtu() error {
+	return ioutil.WriteFile(grpcLinkMtuConf, []byte(os.Getenv("GRPC_LINK_MTU")), os.FileMode(06444))
+}
+
 func removeInterNodeLinkConf() error {
 	if err := os.Remove(interNodeLinkConf); err != nil {
 		return fmt.Errorf("failed to remove %s: %v", interNodeLinkConf, err)
+	}
+	return nil
+}
+
+func removeGrpcLinkMtuConf() error {
+	if err := os.Remove(grpcLinkMtuConf); err != nil {
+		return fmt.Errorf("failed to remove %s: %v", grpcLinkMtuConf, err)
 	}
 	return nil
 }
@@ -131,6 +143,10 @@ func Init() error {
 		return err
 	}
 
+	if err := saveGrpcLinkMtu(); err != nil {
+		return err
+	}
+
 	return saveConfList(conf)
 }
 
@@ -141,5 +157,8 @@ func Cleanup() {
 	}
 	if err := removeInterNodeLinkConf(); err != nil {
 		log.Infof("Failed to remove inter node link conf: %v", err)
+	}
+	if err := removeGrpcLinkMtuConf(); err != nil {
+		log.Infof("Failed to remove grpc link mtu conf: %v", err)
 	}
 }

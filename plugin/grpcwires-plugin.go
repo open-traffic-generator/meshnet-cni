@@ -147,6 +147,25 @@ func CreatGRPCChan(link *mpb.Link, localPod *mpb.Pod, peerPod *mpb.Pod, localCli
 		return fmt.Errorf("Add-GRPC[%s]: creating GRPC wire: failed to create vEth-pair inside pod (%s:%s) and on host (%s). err:%s",
 			localPod.Name, localPod.Name, inContainerVeth.LinkName, hostEndVeth.LinkName, err)
 	}
+	var vethNs ns.NetNS
+	if vethNs, err = ns.GetNS(localPod.NetNs); err != nil {
+		log.Errorf("Add-GRPC[%s]: Could not get local pod namespace %s, err %v", localPod.Name, localPod.NetNs, err)
+		return err
+	}
+	err = vethNs.Do(func(_ ns.NetNS) error {
+		if err = koko.SetMTU(inContainerVeth.LinkName, grpcLinkMtu); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		log.Errorf("Add-GRPC[%s]: Local end could not set MTU on container end interface %s, error:%v", localPod.Name, inContainerVeth.LinkName, err)
+		return err
+	}
+	if err = koko.SetMTU(hostEndVeth.LinkName, grpcLinkMtu); err != nil {
+		log.Errorf("Add-GRPC[%s]: Local end could not set MTU on host end interface %s, error:%v", localPod.Name, hostEndVeth.LinkName, err)
+		return err
+	}	
 
 	/* Dial the remote peer to create the remote end of the grpc tunnel. */
 

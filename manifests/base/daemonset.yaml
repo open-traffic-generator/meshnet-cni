@@ -43,6 +43,8 @@ spec:
             - name: INTER_NODE_LINK_TYPE
               #value: GRPC
               value: VXLAN
+            #- name: GRPC_LINK_MTU
+            #  value: "2600"
             - name: NODE_NAME
               valueFrom:
                 fieldRef:

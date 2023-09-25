@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"os"
+	"strconv"
 
 	log "github.com/sirupsen/logrus"
 
@@ -127,6 +129,25 @@ func CreateUpdateGRPCWireRemoteTriggered(wireDef *mpb.WireDef, stopC chan struct
 		grpcOvrlyLogger.Errorf("[ADD-WIRE:REMOTE-END] Remote end could not get interface index for %s. error:%v", hostEndVeth.LinkName, err)
 		return nil, err
 	}
+	var vethNs ns.NetNS
+	if vethNs, err = ns.GetNS(wireDef.LocalPodNetNs); err != nil {
+		grpcOvrlyLogger.Errorf("[ADD-WIRE:REMOTE-END]]: Remote end could not get local pod namespace %s, err %v", wireDef.LocalPodNetNs, err)
+		return nil, err
+	}
+	err = vethNs.Do(func(_ ns.NetNS) error {
+		if err = koko.SetMTU(inContainerVeth.LinkName, getGrpcLinkMtu()); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		grpcOvrlyLogger.Errorf("[ADD-WIRE:REMOTE-END] Remote end could not set MTU on container end interface %s, error:%v", inContainerVeth.LinkName, err)
+		return nil, err
+	}
+	if err = koko.SetMTU(hostEndVeth.LinkName, getGrpcLinkMtu()); err != nil {
+		grpcOvrlyLogger.Errorf("[ADD-WIRE:REMOTE-END] Remote end could not set MTU on host end interface %s, error:%v", hostEndVeth.LinkName, err)
+		return nil, err
+	}
 	grpcOvrlyLogger.Infof("[ADD-WIRE:REMOTE-END] Trigger from %s:%d : Successfully created remote pod to node vEth pair %s@%s <--> %s(%d).",
 		wireDef.PeerNodeIp, wireDef.WireIfIdOnPeerNode, inIfNm, wireDef.LocalPodName, outIfNm, locIface.Index)
 	aWire := CreateGWire(locIface.Index, hostEndVeth.LinkName, stopC, wireDef)
@@ -161,4 +182,15 @@ func GRPCWireDownRemoteTriggered(wireDef *mpb.WireDef) error {
 	}
 
 	return nil
+}
+func getGrpcLinkMtu() int {
+	var mtu int = wireutil.GRPC_IFACE_MTU
+
+	mtuStr, ok := os.LookupEnv("GRPC_LINK_MTU")
+	if !ok {
+		grpcOvrlyLogger.Warnf("GRPC_LINK_MTU not set")
+	} else {
+		mtu, _ = strconv.Atoi(mtuStr)
+	}
+	return mtu
 }

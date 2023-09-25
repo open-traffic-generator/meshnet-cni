@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"runtime"
+	"strconv"
 
 	"github.com/containernetworking/cni/pkg/skel"
 	"github.com/containernetworking/cni/pkg/types"
@@ -34,6 +35,7 @@ var (
 )
 
 var interNodeLinkType = wireutil.INTER_NODE_LINK_VXLAN
+var grpcLinkMtu = wireutil.GRPC_IFACE_MTU
 
 type netConf struct {
 	types.NetConf
@@ -543,6 +545,18 @@ func SetInterNodeLinkType() {
 	interNodeLinkType = string(b)
 }
 
+func SetGrpcLinkMtu() {
+	mtu, err := os.ReadFile("/etc/cni/net.d/meshnet-grpc-link-mtu")
+	if err != nil || len(mtu) == 0 {
+		log.Warningf("Could not read grpc link mtu, using default mtu: %v", err)
+		// use the default value
+		grpcLinkMtu = wireutil.GRPC_IFACE_MTU
+		return
+	}
+
+	grpcLinkMtu, _ = strconv.Atoi(string(mtu))
+}
+
 // -------------------------------------------------------------------------------------------------
 func main() {
 	fp, err := os.OpenFile("/var/log/meshnet-cni.log", os.O_APPEND|os.O_CREATE|os.O_RDWR, 0666)
@@ -552,6 +566,9 @@ func main() {
 
 	SetInterNodeLinkType()
 	log.Infof("INTER_NODE_LINK_TYPE: %v", interNodeLinkType)
+
+	SetGrpcLinkMtu()
+	log.Infof("GRPC_LINK_MTU: %v", grpcLinkMtu)
 
 	retCode := 0
 	e := skel.PluginMainWithError(cmdAdd, cmdGet, cmdDel, version.All, "CNI plugin meshnet v0.3.0")
