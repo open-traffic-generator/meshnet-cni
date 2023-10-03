@@ -59,12 +59,11 @@ func main() {
 		// generate error and continue
 	}
 
-	// Subscribe for links change event
+	// Subscribe for links state change event
 	chLink := make(chan netlink.LinkUpdate)
 	doneLink := make(chan struct{})
 	defer close(doneLink)
 
-	//if err := netlink.LinkSubscribeAt(netns.NsHandle(vethNs.Fd()), chLink, doneLink); err != nil {
 	if err := netlink.LinkSubscribe(chLink, doneLink); err == nil {
 		log.Infof("Subscribed to link change event")
 	} else {
@@ -78,6 +77,10 @@ func main() {
 	}
 }
 
+// --------------------------------------------------------------------------------------------------------------
+// expectLinkUpdate is the link state update event handler installed on a node. It is called whenever there is
+// any change in state of any veth interface in the pod on this. It extracts the expected event and calls
+// HandleGRPCLinkStateChange() to handle that event.
 func expectLinkUpdate(ch <-chan netlink.LinkUpdate) bool {
 	for {
 		select {

@@ -198,7 +198,7 @@ func ReconGWires() error {
 				reCreateGWire(wireStatus, ctx)
 
 				// synchronize link state of local interface with peer interface
-				//syncLinkStateWithPeer(wireStatus)
+				syncLinkStateWithPeer(wireStatus)
 			}
 		}
 		return nil
