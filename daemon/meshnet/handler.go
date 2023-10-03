@@ -449,3 +449,17 @@ func (m *Meshnet) GenerateNodeInterfaceName(ctx context.Context, in *mpb.Generat
 	}
 	return &mpb.GenerateNodeInterfaceNameResponse{Ok: true, NodeIntfName: locIfNm}, nil
 }
+
+// ------------------------------------------------------------------------------------------------------
+func (m *Meshnet) LinkStateUpdateRemote(ctx context.Context, linkStateUpdate *mpb.LinkStateMessage) (*mpb.BoolResponse, error) {
+	err := grpcwire.TriggeredRemoteLinkStateUpdate(linkStateUpdate.LinkState, linkStateUpdate.PeerIntfId)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"daemon":  "meshnetd",
+			"overlay": "gRPC",
+		}).Errorf("LinkStateUpdateRemote: Could not update link state for interface id %d, err: %v", linkStateUpdate.PeerIntfId, err)
+		return &mpb.BoolResponse{Response: false}, err
+	}
+
+	return &mpb.BoolResponse{Response: true}, nil
+}

@@ -119,6 +119,18 @@ message GenerateNodeInterfaceNameResponse {
   string node_intf_name = 2;   
 }
 
+enum LinkState {
+  DOWN = 0;
+  DOWN_UPDATING = 1;
+  UP = 2;
+  UP_UPDATING = 3;
+}
+
+message LinkStateMessage {    
+    int32 link_state = 1;
+    int64 peer_intf_id = 2;   
+}
+
 service Local {
   rpc Get (PodQuery) returns (Pod);
   rpc SetAlive (Pod) returns (BoolResponse);
@@ -140,6 +152,7 @@ service Remote {
   rpc Update (RemotePod) returns (BoolResponse);
   rpc AddGRPCWireRemote(WireDef) returns (WireCreateResponse);
   rpc GRPCWireDownRemote(WireDef) returns (WireDownResponse);
+  rpc LinkStateUpdateRemote(LinkStateMessage) returns (BoolResponse);  
 }
 
 service WireProtocol {

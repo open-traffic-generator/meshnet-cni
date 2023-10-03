@@ -3,8 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.11.1
-  creationTimestamp: null
+    controller-gen.kubebuilder.io/version: v0.13.0
   name: gwirekobjs.networkop.co.uk
 spec:
   group: networkop.co.uk
@@ -67,6 +66,14 @@ spec:
                       description: Unique link id as assigned by meshnet
                       format: int64
                       type: integer
+                    link_state:
+                      description: Link state of the veth interface between pod and
+                        node.
+                      format: int64
+                      type: integer
+                    local_node_name:
+                      description: Name of the node holding the wire end
+                      type: string
                     local_pod_iface_name:
                       description: Local pod interface name that is specified in topology
                         CR and is created by meshnet
@@ -78,11 +85,8 @@ spec:
                       description: Local pod name as specified in topology CR
                       type: string
                     local_pod_net_ns:
-                      description: Netwokr namespace of the local pod holding the
+                      description: Network namespace of the local pod holding the
                         wire end
-                      type: string
-                    node_name:
-                      description: Name of the node holding the wire end
                       type: string
                     topo_namespace:
                       description: The topology namespace.

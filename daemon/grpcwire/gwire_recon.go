@@ -86,6 +86,7 @@ func CreateWireStatus(wire *GRPCWire, nodeName string) *grpcwirev1.GWireStatus {
 	return &grpcwirev1.GWireStatus{
 		LocalNodeName: nodeName,
 		LinkId:        int64(wire.UID),
+		LinkState:     int64(mpb.LinkState_UP),
 		TopoNamespace: wire.TopoNamespace,
 
 		//local pod information
@@ -195,6 +196,9 @@ func ReconGWires() error {
 					continue
 				}
 				reCreateGWire(wireStatus, ctx)
+
+				// synchronize link state of local interface with peer interface
+				//syncLinkStateWithPeer(wireStatus)
 			}
 		}
 		return nil

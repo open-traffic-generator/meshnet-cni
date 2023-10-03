@@ -8,9 +8,12 @@ import (
 	"github.com/networkop/meshnet-cni/daemon/cni"
 	"github.com/networkop/meshnet-cni/daemon/grpcwire"
 	"github.com/networkop/meshnet-cni/daemon/meshnet"
+	mpb "github.com/networkop/meshnet-cni/daemon/proto/meshnet/v1beta1"
 	"github.com/networkop/meshnet-cni/daemon/vxlan"
 	"github.com/networkop/meshnet-cni/utils/wireutil"
 	log "github.com/sirupsen/logrus"
+	"github.com/vishvananda/netlink"
+	"golang.org/x/sys/unix"
 )
 
 func main() {
@@ -32,6 +35,7 @@ func main() {
 		log.SetLevel(log.DebugLevel)
 		log.Debug("Verbose logging enabled")
 	}
+	// log.SetLevel(log.DebugLevel)
 
 	meshnet.InitLogger()
 	grpcwire.InitLogger()
@@ -55,8 +59,48 @@ func main() {
 		// generate error and continue
 	}
 
+	// Subscribe for links change event
+	chLink := make(chan netlink.LinkUpdate)
+	doneLink := make(chan struct{})
+	defer close(doneLink)
+
+	//if err := netlink.LinkSubscribeAt(netns.NsHandle(vethNs.Fd()), chLink, doneLink); err != nil {
+	if err := netlink.LinkSubscribe(chLink, doneLink); err == nil {
+		log.Infof("Subscribed to link change event")
+	} else {
+		log.Errorf("Could not subscribe to link change event: %v", err)
+	}
+	go expectLinkUpdate(chLink)
+
 	if err := m.Serve(); err != nil {
 		log.Errorf("daemon exited badly: %v", err)
 		os.Exit(1)
+	}
+}
+
+func expectLinkUpdate(ch <-chan netlink.LinkUpdate) bool {
+	for {
+		select {
+		case update := <-ch:
+			if update.Link != nil {
+				log.Debugf("expectLinkUpdate: Link name %s, oper state %d (%s), MTU %d, IFF_UP %d, ",
+					update.Link.Attrs().Name, update.Link.Attrs().OperState, update.Link.Attrs().OperState.String(),
+					update.Link.Attrs().MTU, update.IfInfomsg.Flags&unix.IFF_UP)
+
+				var linkState int32 = 0
+				if update.Link.Attrs().OperState == netlink.OperUp {
+					linkState = int32(mpb.LinkState_UP)
+				} else if update.Link.Attrs().OperState == netlink.OperLowerLayerDown {
+					/* || update.Link.Attrs().OperState == netlink.OperDown */
+					linkState = int32(mpb.LinkState_DOWN)
+				} else {
+					log.Debugf("expectLinkUpdate: Unsupported link change type %d(%s) on interface %s",
+						update.Link.Attrs().OperState, update.Link.Attrs().OperState.String(), update.Link.Attrs().Name)
+					continue
+				}
+				// +++TBD: should we restrict max thread count to say 20??
+				go grpcwire.HandleGRPCLinkStateChange(update.Link, linkState)
+			}
+		}
 	}
 }

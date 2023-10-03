@@ -123,6 +123,20 @@ endif
 
 github-ci: kust-ensure build clean local upload install e2e
 
+.PHONY: crds
+crds: ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
+	controller-gen crd paths="./api/types/..." output:crd:artifacts:config=manifests/base/
+	@cp manifests/base/networkop.co.uk_gwirekobjs.yaml manifests/base/gwire_crd.yaml
+	@rm -f manifests/base/networkop.co.uk_*
+
+.PHONY: deepcopy
+deepcopy: ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
+	@## $(CONTROLLER_GEN) object:headerFile="boilerplate.go.txt" paths="./api/types/v1beta1/gwire_types.go"
+	@mv ./api/types/v1beta1/zz_generated.deepcopy.go ./api/types/v1beta1/zz_generated.deepcopy_bk.go
+	go generate "./api/types/v1beta1/gwire_types.go"
+	@mv ./api/types/v1beta1/zz_generated.deepcopy.go ./api/types/v1beta1/zz_generated_grpcwire.deepcopy.go
+	@mv ./api/types/v1beta1/zz_generated.deepcopy_bk.go ./api/types/v1beta1/zz_generated.deepcopy.go
+
 # From: https://gist.github.com/klmr/575726c7e05d8780505a
 help:
 	@echo "$$(tput sgr0)";sed -ne"/^## /{h;s/.*//;:d" -e"H;n;s/^## //;td" -e"s/:.*//;G;s/\\n## /---/;s/\\n/ /g;p;}" ${MAKEFILE_LIST}|awk -F --- -v n=$$(tput cols) -v i=15 -v a="$$(tput setaf 6)" -v z="$$(tput sgr0)" '{printf"%s%*s%s ",a,-i,$$1,z;m=split($$2,w," ");l=n-i;for(j=1;j<=m;j++){l-=length(w[j])+1;if(l<= 0){l=n-i-length(w[j])-1;printf"\n%*s ",-i," ";}printf"%s ",w[j];}printf"\n";}'

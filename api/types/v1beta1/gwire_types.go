@@ -42,10 +42,13 @@ type GWireKNodeStatus struct {
 type GWireStatus struct {
 	// +optional
 	// Name of the node holding the wire end
-	LocalNodeName string `json:"node_name"`
+	LocalNodeName string `json:"local_node_name"`
 	// +optional
 	// Unique link id as assigned by meshnet
 	LinkId int64 `json:"link_id"`
+	// +optional
+	// Link state of the veth interface between pod and node.
+	LinkState int64 `json:"link_state"`
 	// +optional
 	// The topology namespace.
 	TopoNamespace string `json:"topo_namespace"`
