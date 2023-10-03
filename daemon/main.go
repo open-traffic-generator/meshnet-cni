@@ -83,19 +83,22 @@ func expectLinkUpdate(ch <-chan netlink.LinkUpdate) bool {
 		select {
 		case update := <-ch:
 			if update.Link != nil {
-				log.Debugf("expectLinkUpdate: Link name %s, oper state %d (%s), MTU %d, IFF_UP %d, ",
+				log.Infof("expectLinkUpdate: Link name %s, oper state %d (%s), MTU %d, IFF_UP %d, flags %x(%d)",
 					update.Link.Attrs().Name, update.Link.Attrs().OperState, update.Link.Attrs().OperState.String(),
-					update.Link.Attrs().MTU, update.IfInfomsg.Flags&unix.IFF_UP)
+					update.Link.Attrs().MTU, update.IfInfomsg.Flags&unix.IFF_UP,
+					update.IfInfomsg.Flags, update.IfInfomsg.Flags)
 
 				var linkState int32 = 0
 				if update.Link.Attrs().OperState == netlink.OperUp {
 					linkState = int32(mpb.LinkState_UP)
-				} else if update.Link.Attrs().OperState == netlink.OperLowerLayerDown {
+				} else if update.Link.Attrs().OperState == netlink.OperLowerLayerDown &&
+					update.IfInfomsg.Flags&unix.IFF_LOWER_UP == 0 {
 					/* || update.Link.Attrs().OperState == netlink.OperDown */
 					linkState = int32(mpb.LinkState_DOWN)
 				} else {
-					log.Debugf("expectLinkUpdate: Unsupported link change type %d(%s) on interface %s",
-						update.Link.Attrs().OperState, update.Link.Attrs().OperState.String(), update.Link.Attrs().Name)
+					log.Infof("expectLinkUpdate: Unsupported link change type %d(%s), flags %x on interface %s",
+						update.Link.Attrs().OperState, update.Link.Attrs().OperState.String(),
+						update.IfInfomsg.Flags, update.Link.Attrs().Name)
 					continue
 				}
 				// +++TBD: should we restrict max thread count to say 20??

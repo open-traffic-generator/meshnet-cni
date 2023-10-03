@@ -23,6 +23,9 @@ import (
 // - how to make lookup faster for gwirestatus item?
 // - ifconfig up cmd is not making interface up. need to call it at both ends of veth link. (done)
 // - should we restrict max thread count to say 20??
+// - LinkSetUp() on remote node is sending back linkstate up followed by linkstate down which is
+//   causing local node to down its link state
+//		- link down is handled by flags. need to handle (avoid) link up event now
 
 const (
 	kLinkState                    = "link_state" // json name of Status of gwire_type, +++TBD: can we make it dynamic
@@ -83,6 +86,8 @@ func HandleGRPCLinkStateChange(link netlink.Link, linkState int32) error {
 			linkState, intfName, err)
 		return err
 	}
+	grpcOvrlyLogger.Infof("HandleGRPCLinkStateChange-done: Handle link update for interface %s to set link state to %d",
+		intfName, linkState)
 	return nil
 }
 
@@ -392,6 +397,8 @@ func TriggeredRemoteLinkStateUpdate(linkState int32, intfId int64) error {
 			return err
 		}
 	}
+	grpcOvrlyLogger.Infof("TriggeredRemoteLinkStateUpdate-done: Updating link state %d on interface %d",
+		linkState, intfId)
 
 	return err
 }
