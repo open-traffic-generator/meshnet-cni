@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"runtime"
 	"strings"
 	"time"
 
@@ -23,11 +22,12 @@ import (
 // Current Issues to solve:
 // - how to not call callback during topo creation? i.e., how to avoid unnecessary callback handling?
 // - how to make lookup faster for gwirestatus item?
-// - ifconfig up cmd is not making interface up. need to call it at both ends of veth link. (done)
 // - LinkSetUp() on remote node is sending back linkstate up followed by linkstate down which is
 //   causing local node to down its link state
-//		- link down is handled by flags. need to handle (avoid) link up event now
-// - should we restrict max thread count to say 20??
+//		- link down has been handled by flags. need to handle (avoid) link up event
+
+// - should we restrict max thread count to say 20?? (done)
+// - ifconfig up cmd is not making interface up. need to call it at both ends of veth link. (done)
 
 const (
 	kLinkState                    = "link_state" // json name of Status of gwire_type, +++TBD: can we make it dynamic
@@ -243,14 +243,8 @@ func updateWireStatusToK8SDatastore(linkState linkStateType, intfName string) er
 
 				_, err = gWClient.UpdateWireObj(ctx, wireStatus.TopoNamespace, &node)
 				if err != nil {
-					pc, _, _, ok := runtime.Caller(1)
-					details := runtime.FuncForPC(pc)
-					funcName := "None"
-					if ok && details != nil {
-						funcName = details.Name()
-					}
-					grpcOvrlyLogger.Errorf("updateWireStatusToK8SDatastore(caller %s): Could not update link state %s for interface %s for node %s into K8s, err %v",
-						funcName, linkState, intfName, node.GetName(), err)
+					// grpcOvrlyLogger.Errorf("updateWireStatusToK8SDatastore (id=%d): Could not update link state %s for interface %s for node %s into K8s, err %v",
+					// 	id, linkState, intfName, node.GetName(), err)
 					return err
 				}
 
@@ -372,8 +366,8 @@ func syncLinkStateWithPeer(wireStatus grpcwirev1.GWireStatus) error {
 // on local node.
 func TriggeredRemoteLinkStateUpdate(ls int32, intfId int64) error {
 	linkState := linkStateType(ls)
-	grpcOvrlyLogger.Infof("TriggeredRemoteLinkStateUpdate: Updating link state %s on interface %d",
-		linkState, intfId)
+	// grpcOvrlyLogger.Infof("TriggeredRemoteLinkStateUpdate: Updating link state %s on interface %d",
+	// 	linkState, intfId)
 
 	link, err := netlink.LinkByIndex(int(intfId))
 	if err != nil {

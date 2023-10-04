@@ -16,6 +16,10 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+const (
+	MAX_WORKER_THREAD = 5
+)
+
 func main() {
 
 	if err := cni.Init(); err != nil {
@@ -69,7 +73,13 @@ func main() {
 	} else {
 		log.Errorf("Could not subscribe to link change event: %v", err)
 	}
-	go expectLinkUpdate(chLink)
+
+	// restrict max worker threads to a defined number. worker thread will process interface state change
+	// event
+	// Fan-out: Create worker goroutines
+	for i := 0; i < MAX_WORKER_THREAD; i++ {
+		go expectLinkUpdate(chLink)
+	}
 
 	if err := m.Serve(); err != nil {
 		log.Errorf("daemon exited badly: %v", err)
@@ -90,6 +100,11 @@ func expectLinkUpdate(ch <-chan netlink.LinkUpdate) bool {
 					update.Link.Attrs().Name, update.Link.Attrs().OperState, update.Link.Attrs().OperState.String(),
 					update.Link.Attrs().MTU, update.IfInfomsg.Flags&unix.IFF_UP,
 					update.IfInfomsg.Flags, update.IfInfomsg.Flags)
+				// log.Infof("expectLinkUpdate: Link Flags %x/%x, p index %d, m index %d, Alias %s, slave %v, header %x",
+				// 	update.Link.Attrs().Flags, update.Link.Attrs().RawFlags,
+				// 	update.Link.Attrs().ParentIndex, update.Link.Attrs().MasterIndex,
+				// 	update.Link.Attrs().Alias, update.Link.Attrs().Slave,
+				// 	update.Header.Flags)
 
 				var linkState int32 = 0
 				if update.Link.Attrs().OperState == netlink.OperUp {
@@ -104,7 +119,6 @@ func expectLinkUpdate(ch <-chan netlink.LinkUpdate) bool {
 						update.IfInfomsg.Flags, update.Link.Attrs().Name)
 					continue
 				}
-				// +++TBD: should we restrict max thread count to say 20??
 				go grpcwire.HandleGRPCLinkStateChange(update.Link, linkState)
 			}
 		}
