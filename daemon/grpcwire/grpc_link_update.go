@@ -35,13 +35,13 @@ const (
 
 )
 
-type linkStateType int
+type linkStateEvent int
 
-func (ls linkStateType) String() string {
+func (ls linkStateEvent) String() string {
 	switch ls {
-	case linkStateType(mpb.LinkState_DOWN):
+	case linkStateEvent(mpb.LinkState_DOWN):
 		return "down"
-	case linkStateType(mpb.LinkState_UP):
+	case linkStateEvent(mpb.LinkState_UP):
 		return "up"
 	}
 	return "unknown"
@@ -49,16 +49,15 @@ func (ls linkStateType) String() string {
 
 // --------------------------------------------------------------------------------------------------------------
 // HandleGRPCLinkStateChange
-//
-// - find wirestatus from K8S data store for the given local node interface name for the local node
-// - extract corresponding peer node ip and interface id on the peer node
-// - set given link state on the interface of peer node.
-// - update link state for this wirestatus in K8S datastore
+//   - find wirestatus from K8S data store for the given local node interface name and local node
+//   - extract corresponding peer node ip and interface id on the peer node
+//   - set given link state on the interface of peer node.
+//   - update link state for this wirestatus in K8S datastore
 func HandleGRPCLinkStateChange(link netlink.Link, ls int32) error {
-	linkState := linkStateType(ls)
+	linkState := linkStateEvent(ls)
 	intfName := link.Attrs().Name
-	grpcOvrlyLogger.Infof("HandleGRPCLinkStateChange: Handle link update for interface %s to set link state to %s",
-		intfName, linkState)
+
+	// grpcOvrlyLogger.Infof("HandleGRPCLinkStateChange: Update link state to %s on interface %s", linkState, intfName)
 	// get wire status from K8S datastore
 	wireStatus, err := getWireStatusFromK8SDatastore(intfName)
 	if err != nil {
@@ -75,44 +74,40 @@ func HandleGRPCLinkStateChange(link netlink.Link, ls int32) error {
 	// 	return nil
 	// }
 
-	if linkState == linkStateType(mpb.LinkState_UP) {
+	if linkState == linkStateEvent(mpb.LinkState_UP) {
 		// +++TBD: need linux documentation why need to set node interface up when pod interface is set up??
 		if err := netlink.LinkSetUp(link); err != nil {
-			grpcOvrlyLogger.Errorf("HandleGRPCLinkStateChange: Could not set interface %s up in node, err %v",
+			grpcOvrlyLogger.Errorf("HandleGRPCLinkStateChange: Could not set link state up on interface %s, err %v",
 				intfName, err)
 		}
 	}
-
 	// set link state on the interface of peer node
 	err = updateGRPCLinkStateOnPeerNodeIntf(linkState, wireStatus.WireIfaceIdOnPeerNode, wireStatus.GWirePeerNodeIp)
 	if err != nil {
-		grpcOvrlyLogger.Errorf("HandleGRPCLinkStateChange: Could not update link state on peer node interface, err %v", err)
+		grpcOvrlyLogger.Errorf("HandleGRPCLinkStateChange: Could not update link state %s on peer node interface %d, err %v",
+			linkState, wireStatus.WireIfaceIdOnPeerNode, err)
 		return err
 	}
 
 	// update link state in the K8S datastore
 	err = updateWireStatusToK8SDatastore(linkState, wireStatus.WireIfaceNameOnLocalNode)
-	if err == nil {
-		grpcOvrlyLogger.Infof("HandleGRPCLinkStateChange: Successfully updated link state %s for interface %s to K8S datastore",
-			linkState, intfName)
-	} else {
+	if err != nil {
 		grpcOvrlyLogger.Errorf("HandleGRPCLinkStateChange: Could not update link state %s for interface %s to K8S datastore, err %v",
 			linkState, intfName, err)
 		return err
 	}
-	grpcOvrlyLogger.Infof("HandleGRPCLinkStateChange-done: Handle link update for interface %s to set link state to %s",
-		intfName, linkState)
+	// grpcOvrlyLogger.Infof("HandleGRPCLinkStateChange-done: Update link state to %s on interface %s", linkState, intfName)
 	return nil
 }
 
-// --------------------------------------------------------------------------------------------------------------
+// -------------------------------------------------------------------------------------------------------------
 // getWireStatusFromK8SDatastore gets GWireStatus for the given interface 'intfName' on the local node. 'intfName'
 // is unique on this node.
 func getWireStatusFromK8SDatastore(intfName string) (*grpcwirev1.GWireStatus, error) {
 	var wireStatus grpcwirev1.GWireStatus
 	nodeName, err := findNodeName()
 	if err != nil {
-		grpcOvrlyLogger.Errorf("getWireStatusFromK8SDatastore: could not get node: %v", err)
+		grpcOvrlyLogger.Errorf("getWireStatusFromK8SDatastore: Could not retrieve node, err: %v", err)
 		return &wireStatus, err
 	}
 
@@ -121,7 +116,7 @@ func getWireStatusFromK8SDatastore(intfName string) (*grpcwirev1.GWireStatus, er
 		// retrieve list of grpc wire obj list for all namespaces for the current node-name
 		gwireKObjList, err := gWClient.GetWireObjListUS(ctx, nodeName)
 		if err != nil {
-			grpcOvrlyLogger.Errorf("getWireStatusFromK8SDatastore: could not get gWireKObjs from k8s: %v", err)
+			grpcOvrlyLogger.Errorf("getWireStatusFromK8SDatastore: Could not get gWireKObjs list from K8S, err: %v", err)
 			return err
 		}
 		// in the unlikely situation where one has multiple topologies running in the same cluster,
@@ -131,7 +126,7 @@ func getWireStatusFromK8SDatastore(intfName string) (*grpcwirev1.GWireStatus, er
 			// a node is found and node-Status-GWireKItems exists, so reconcile
 			grpcWireItems, found, err := unstructured.NestedSlice(node.Object, kStatus, kGrpcWireItems)
 			if err != nil {
-				grpcOvrlyLogger.Errorf("getWireStatusFromK8SDatastore: could not retrieve grpcWireItem: %v", err)
+				grpcOvrlyLogger.Errorf("getWireStatusFromK8SDatastore: Could not retrieve grpcWireItem, err: %v", err)
 				continue
 			}
 			if !found {
@@ -146,14 +141,14 @@ func getWireStatusFromK8SDatastore(intfName string) (*grpcwirev1.GWireStatus, er
 			for _, grpcWireItem := range grpcWireItems {
 				wireStatusItem, ok := grpcWireItem.(map[string]interface{})
 				if !ok {
-					grpcOvrlyLogger.Errorf("getWireStatusFromK8SDatastore: unable to retrieve wire status item, %v is not a map", grpcWireItem)
+					grpcOvrlyLogger.Errorf("getWireStatusFromK8SDatastore: Unable to retrieve wire status item, grpcWireItem is not a map")
 					continue
 				}
 
 				// create the wire structure from the saved data in K8S datastore
 				wireStatus = grpcwirev1.GWireStatus{}
 				if err := apiruntime.DefaultUnstructuredConverter.FromUnstructured(wireStatusItem, &wireStatus); err != nil {
-					grpcOvrlyLogger.Errorf("getWireStatusFromK8SDatastore: unable to retrieve wire status: %v", err)
+					grpcOvrlyLogger.Errorf("getWireStatusFromK8SDatastore: Unable to retrieve wire status, err: %v", err)
 					continue
 				}
 				if intfName == wireStatus.WireIfaceNameOnLocalNode { // this iface name is unique in a node
@@ -161,15 +156,15 @@ func getWireStatusFromK8SDatastore(intfName string) (*grpcwirev1.GWireStatus, er
 				}
 			}
 		}
-		return fmt.Errorf("getWireStatusFromK8SDatastore: interface %s not present in K8S datastore for node %s", intfName, nodeName)
+		return fmt.Errorf("getWireStatusFromK8SDatastore: Interface %s not present in K8S datastore for node %s", intfName, nodeName)
 	})
 	return &wireStatus, retryErr
 }
 
-// --------------------------------------------------------------------------------------------------------------
+// -------------------------------------------------------------------------------------------------------------
 // updateWireStatusToK8SDatastore updates given link state 'linkState' for the given interface 'intfName' for the
 // local node in K8S datastore.
-func updateWireStatusToK8SDatastore(linkState linkStateType, intfName string) error {
+func updateWireStatusToK8SDatastore(linkState linkStateEvent, intfName string) error {
 	var wireStatus grpcwirev1.GWireStatus
 	nodeName, err := findNodeName()
 	if err != nil {
@@ -182,7 +177,7 @@ func updateWireStatusToK8SDatastore(linkState linkStateType, intfName string) er
 		// retrieve list of grpc wire obj list for all namespaces for the current node-name
 		gwireKObjList, err := gWClient.GetWireObjListUS(ctx, nodeName)
 		if err != nil {
-			grpcOvrlyLogger.Errorf("updateWireStatusToK8SDatastore: could not get gWireKObjs from k8s: %v", err)
+			grpcOvrlyLogger.Errorf("updateWireStatusToK8SDatastore: Could not get gWireKObjs list from K8S, err: %v", err)
 			return err
 		}
 		// in the unlikely situation where one has multiple topologies running in the same cluster,
@@ -192,7 +187,7 @@ func updateWireStatusToK8SDatastore(linkState linkStateType, intfName string) er
 			// a node is found and node-Status-GWireKItems exists, so reconcile
 			grpcWireItems, found, err := unstructured.NestedSlice(node.Object, kStatus, kGrpcWireItems)
 			if err != nil {
-				grpcOvrlyLogger.Errorf("updateWireStatusToK8SDatastore: Could not retrieve grpcWireItem: %v", err)
+				grpcOvrlyLogger.Errorf("updateWireStatusToK8SDatastore: Could not retrieve grpcWireItem, err: %v", err)
 				continue
 			}
 			if !found {
@@ -210,14 +205,14 @@ func updateWireStatusToK8SDatastore(linkState linkStateType, intfName string) er
 			for wireStatusIndex, grpcWireItem = range grpcWireItems {
 				wireStatusItem, ok := grpcWireItem.(map[string]interface{})
 				if !ok {
-					grpcOvrlyLogger.Errorf("updateWireStatusToK8SDatastore: Unable to retrieve wire status item, %v is not a map", grpcWireItem)
+					grpcOvrlyLogger.Errorf("updateWireStatusToK8SDatastore: Unable to retrieve wire status item, grpcWireItem is not a map")
 					continue
 				}
 
 				// create the wire structure from the saved data in K8S data store
 				wireStatus = grpcwirev1.GWireStatus{}
 				if err := apiruntime.DefaultUnstructuredConverter.FromUnstructured(wireStatusItem, &wireStatus); err != nil {
-					grpcOvrlyLogger.Errorf("updateWireStatusToK8SDatastore: Unable to retrieve wire status: %v", err)
+					grpcOvrlyLogger.Errorf("updateWireStatusToK8SDatastore: Unable to retrieve wire status, err: %v", err)
 					continue
 				}
 				if intfName == wireStatus.WireIfaceNameOnLocalNode { // this iface name is unique in a node
@@ -231,7 +226,7 @@ func updateWireStatusToK8SDatastore(linkState linkStateType, intfName string) er
 
 				// update linkState in wireStatusItem
 				if err := unstructured.SetNestedField(grpcWireItems[wireStatusIndex].(map[string]interface{}), int64(linkState), kLinkState); err != nil {
-					grpcOvrlyLogger.Errorf("updateWireStatusToK8SDatastore: Could not set linkstate %s for interface %s in wireStatusItem in K8S datastore, err %v",
+					grpcOvrlyLogger.Errorf("updateWireStatusToK8SDatastore: Could not set link state %s for interface %s in wireStatusItem in K8S datastore, err %v",
 						linkState, intfName, err)
 					return err
 				}
@@ -242,8 +237,6 @@ func updateWireStatusToK8SDatastore(linkState linkStateType, intfName string) er
 
 				_, err = gWClient.UpdateWireObj(ctx, wireStatus.TopoNamespace, &node)
 				if err != nil {
-					// grpcOvrlyLogger.Errorf("updateWireStatusToK8SDatastore (id=%d): Could not update link state %s for interface %s for node %s into K8s, err %v",
-					// 	id, linkState, intfName, node.GetName(), err)
 					return err
 				}
 
@@ -256,11 +249,11 @@ func updateWireStatusToK8SDatastore(linkState linkStateType, intfName string) er
 	return retryErr
 }
 
-// ---------------------------------------------------------------------------------------------------------------
+// -------------------------------------------------------------------------------------------------------------
 // updateGRPCLinkStateOnPeerNodeIntf sets given link state 'linkState' on the interface identified by 'peerIntfId'
 // on peer node 'peerNodeIp'. It attempts 'linkStateUpdateRetryCount' times at an interval of
 // 'linkStateUpdateRetryInterval' msec to set this link state.
-func updateGRPCLinkStateOnPeerNodeIntf(linkState linkStateType, peerIntfId int64, peerNodeIp string) error {
+func updateGRPCLinkStateOnPeerNodeIntf(linkState linkStateEvent, peerIntfId int64, peerNodeIp string) error {
 	lsMsg := &mpb.LinkStateMessage{
 		LinkState:  int32(linkState),
 		PeerIntfId: peerIntfId,
@@ -270,10 +263,10 @@ func updateGRPCLinkStateOnPeerNodeIntf(linkState linkStateType, peerIntfId int64
 	url := strings.TrimSpace(fmt.Sprintf("%s:%d", peerNodeIp, wireutil.GRPCDefaultPort))
 	remote, err := grpc.Dial(url, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		grpcOvrlyLogger.Errorf("updateGRPCLinkStateOnPeerNodeIntf: Failed to connect to remote %s", url)
+		grpcOvrlyLogger.Errorf("updateGRPCLinkStateOnPeerNodeIntf: Could not connect to remote %s, err: %v", url, err)
 		return err
 	}
-	grpcOvrlyLogger.Infof("updateGRPCLinkStateOnPeerNodeIntf: Successfully connected to remote %s", url)
+	// grpcOvrlyLogger.Infof("updateGRPCLinkStateOnPeerNodeIntf: Successfully connected to remote %s", url)
 	defer remote.Close()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -302,14 +295,13 @@ func updateGRPCLinkStateOnPeerNodeIntf(linkState linkStateType, peerIntfId int64
 		}
 	}
 
-	grpcOvrlyLogger.Infof("updateGRPCLinkStateOnPeerNodeIntf: Successfully updated link state %s on peer node interface %d",
-		linkState, peerIntfId)
+	// grpcOvrlyLogger.Infof("updateGRPCLinkStateOnPeerNodeIntf: Successfully updated link state %s on peer node interface %d",
+	// 	linkState, peerIntfId)
 	return nil
 }
 
-// --------------------------------------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------------------------------------------------
 // syncLinkStateWithPeer
-//
 //   - check if there is discrepancy of link state between given wire status stored in K8S datastore and
 //     interface present local node
 //   - if discrepancy is present then link state of interface (not of wire status) is set on the corresponding
@@ -317,42 +309,43 @@ func updateGRPCLinkStateOnPeerNodeIntf(linkState linkStateType, peerIntfId int64
 //   - link state is updated in K8S data store on successful update of link state on peer node
 func syncLinkStateWithPeer(wireStatus grpcwirev1.GWireStatus) error {
 	var (
-		linkState           linkStateType = 0
-		updateLinkStateInDs               = false
+		linkState           linkStateEvent = 0
+		updateLinkStateInDs                = false
 	)
 	// check if sync is required for this local interface
 	link, err := netlink.LinkByName(wireStatus.WireIfaceNameOnLocalNode)
 	if err != nil {
-		grpcOvrlyLogger.Errorf("syncLinkStateWithPeer: Interface %s does not exist on local node, err %v",
+		grpcOvrlyLogger.Errorf("syncLinkStateWithPeer: Interface %s does not exist on local node, err: %v",
 			wireStatus.WireIfaceNameOnLocalNode, err)
 		return err
 	}
 	if link.Attrs().OperState == netlink.OperUp && wireStatus.LinkState == int64(mpb.LinkState_DOWN) {
 		// local interface is up and wirestatus is down, sync remote to up
-		linkState = linkStateType(mpb.LinkState_UP)
-		grpcOvrlyLogger.Infof("syncLinkStateWithPeer: Syncing remote wire interface (%d) to up because local"+
+		linkState = linkStateEvent(mpb.LinkState_UP)
+		grpcOvrlyLogger.Infof("syncLinkStateWithPeer: Sync-ing remote wire interface (%d) to up because local"+
 			" interface (%s) is up but wirestatus is down",
 			wireStatus.WireIfaceIdOnPeerNode, wireStatus.WireIfaceNameOnLocalNode)
 		err = updateGRPCLinkStateOnPeerNodeIntf(linkState, wireStatus.WireIfaceIdOnPeerNode, wireStatus.GWirePeerNodeIp)
 		updateLinkStateInDs = true
 	} else if link.Attrs().OperState == netlink.OperLowerLayerDown && wireStatus.LinkState == int64(mpb.LinkState_UP) {
 		// local interface is down and wirestatus is up, sync remote to down
-		linkState = linkStateType(mpb.LinkState_DOWN)
-		grpcOvrlyLogger.Infof("syncLinkStateWithPeer: Syncing remote wire interface (%d) to down because local"+
+		linkState = linkStateEvent(mpb.LinkState_DOWN)
+		grpcOvrlyLogger.Infof("syncLinkStateWithPeer: Sync-ing remote wire interface (%d) to down because local"+
 			" interface (%s) is down but wirestatus is up",
 			wireStatus.WireIfaceIdOnPeerNode, wireStatus.WireIfaceNameOnLocalNode)
 		err = updateGRPCLinkStateOnPeerNodeIntf(linkState, wireStatus.WireIfaceIdOnPeerNode, wireStatus.GWirePeerNodeIp)
 		updateLinkStateInDs = true
 	}
 	if err != nil {
-		grpcOvrlyLogger.Errorf("syncLinkStateWithPeer: Could not update link state on peer node interface (%d), err %v",
-			wireStatus.WireIfaceIdOnPeerNode, err)
+		grpcOvrlyLogger.Errorf("syncLinkStateWithPeer: Could not update link state %s on peer node interface (%d), err: %v",
+			linkState, wireStatus.WireIfaceIdOnPeerNode, err)
 		return err
 	}
 	if updateLinkStateInDs {
 		err = updateWireStatusToK8SDatastore(linkState, wireStatus.WireIfaceNameOnLocalNode)
 		if err != nil {
-			grpcOvrlyLogger.Errorf("syncLinkStateWithPeer: Could not update link state %s to K8S datastore, err %v", linkState, err)
+			grpcOvrlyLogger.Errorf("syncLinkStateWithPeer: Could not update link state %s for interface %s to K8S datastore, err %v",
+				linkState, wireStatus.WireIfaceNameOnLocalNode, err)
 			return err
 		}
 	}
@@ -360,11 +353,11 @@ func syncLinkStateWithPeer(wireStatus grpcwirev1.GWireStatus) error {
 	return nil
 }
 
-// --------------------------------------------------------------------------------------------------------------
+// -------------------------------------------------------------------------------------------------------------
 // TriggeredRemoteLinkStateUpdate sets given link state 'linkState' on the interface identified by id 'intfId'
 // on local node.
 func TriggeredRemoteLinkStateUpdate(ls int32, intfId int64) error {
-	linkState := linkStateType(ls)
+	linkState := linkStateEvent(ls)
 	// grpcOvrlyLogger.Infof("TriggeredRemoteLinkStateUpdate: Updating link state %s on interface %d",
 	// 	linkState, intfId)
 
@@ -374,8 +367,8 @@ func TriggeredRemoteLinkStateUpdate(ls int32, intfId int64) error {
 		return err
 	}
 
-	grpcOvrlyLogger.Infof("TriggeredRemoteLinkStateUpdate: Updating link state %s on interface %s",
-		linkState, link.Attrs().Name)
+	// grpcOvrlyLogger.Infof("TriggeredRemoteLinkStateUpdate: Updating link state %s on interface %s",
+	// 	linkState, link.Attrs().Name)
 
 	// // update link state to updating in k8s datastore so that subsequent repeated changes because of following
 	// // up/down instruction can be avoided. The intended state will be set after successful operation.
@@ -394,34 +387,30 @@ func TriggeredRemoteLinkStateUpdate(ls int32, intfId int64) error {
 	// }
 
 	switch linkState {
-	case linkStateType(mpb.LinkState_UP):
+	case linkStateEvent(mpb.LinkState_UP):
 		if err = netlink.LinkSetUp(link); err != nil {
-			grpcOvrlyLogger.Errorf("TriggeredRemoteLinkStateUpdate: Could not set link up for interface %d(%s), err %v",
+			grpcOvrlyLogger.Errorf("TriggeredRemoteLinkStateUpdate: Could not set link state up for interface %d(%s), err: %v",
 				intfId, link.Attrs().Name, err)
 		}
-	case linkStateType(mpb.LinkState_DOWN):
+	case linkStateEvent(mpb.LinkState_DOWN):
 		if err = netlink.LinkSetDown(link); err != nil {
-			grpcOvrlyLogger.Errorf("TriggeredRemoteLinkStateUpdate: Could not set link down for interface %d(%s), err %v",
+			grpcOvrlyLogger.Errorf("TriggeredRemoteLinkStateUpdate: Could not set link state down for interface %d(%s), err: %v",
 				intfId, link.Attrs().Name, err)
 		}
 	default:
-		err = fmt.Errorf("TriggeredRemoteLinkStateUpdate: Invalid link state type %s for interface %d(%s)",
+		err = fmt.Errorf("TriggeredRemoteLinkStateUpdate: Invalid link state %s for interface %d(%s)",
 			linkState, intfId, link.Attrs().Name)
 	}
 
 	// Set state to k8s datastore
 	if err == nil {
 		err = updateWireStatusToK8SDatastore(linkState, link.Attrs().Name)
-		if err == nil {
-			grpcOvrlyLogger.Infof("TriggeredRemoteLinkStateUpdate: Successfully updated link state %s for interface %s to K8S datastore",
-				linkState, link.Attrs().Name)
-		} else {
+		if err != nil {
 			grpcOvrlyLogger.Errorf("TriggeredRemoteLinkStateUpdate: Could not update link state %s to K8S datastore, err %v", linkState, err)
 			return err
 		}
 	}
-	grpcOvrlyLogger.Infof("TriggeredRemoteLinkStateUpdate-done: Updating link state %s on interface %d",
-		linkState, intfId)
+	// grpcOvrlyLogger.Infof("TriggeredRemoteLinkStateUpdate-done: Updating link state %s on interface %d", linkState, intfId)
 
 	return err
 }

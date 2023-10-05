@@ -69,7 +69,7 @@ func main() {
 	defer close(doneLink)
 
 	if err := netlink.LinkSubscribe(chLink, doneLink); err == nil {
-		log.Infof("Subscribed to link change event")
+		log.Infof("Successfully subscribed to link change event")
 	} else {
 		log.Errorf("Could not subscribe to link change event: %v", err)
 	}
@@ -96,22 +96,16 @@ func expectLinkUpdate(ch <-chan netlink.LinkUpdate) bool {
 		select {
 		case update := <-ch:
 			if update.Link != nil {
-				log.Infof("expectLinkUpdate: Link name %s, oper state %d (%s), MTU %d, IFF_UP %d, flags %x(%d)",
-					update.Link.Attrs().Name, update.Link.Attrs().OperState, update.Link.Attrs().OperState.String(),
-					update.Link.Attrs().MTU, update.IfInfomsg.Flags&unix.IFF_UP,
-					update.IfInfomsg.Flags, update.IfInfomsg.Flags)
-				// log.Infof("expectLinkUpdate: Link Flags %x/%x, p index %d, m index %d, Alias %s, slave %v, header %x",
-				// 	update.Link.Attrs().Flags, update.Link.Attrs().RawFlags,
-				// 	update.Link.Attrs().ParentIndex, update.Link.Attrs().MasterIndex,
-				// 	update.Link.Attrs().Alias, update.Link.Attrs().Slave,
-				// 	update.Header.Flags)
+				// log.Infof("expectLinkUpdate: Link name %s, oper state %d (%s), MTU %d, IFF_UP %d, flags %x(%d)",
+				// 	update.Link.Attrs().Name, update.Link.Attrs().OperState, update.Link.Attrs().OperState.String(),
+				// 	update.Link.Attrs().MTU, update.IfInfomsg.Flags&unix.IFF_UP,
+				// 	update.IfInfomsg.Flags, update.IfInfomsg.Flags)
 
 				var linkState int32 = 0
 				if update.Link.Attrs().OperState == netlink.OperUp {
 					linkState = int32(mpb.LinkState_UP)
 				} else if update.Link.Attrs().OperState == netlink.OperLowerLayerDown &&
 					update.IfInfomsg.Flags&unix.IFF_LOWER_UP == 0 {
-					/* || update.Link.Attrs().OperState == netlink.OperDown */
 					linkState = int32(mpb.LinkState_DOWN)
 				} else {
 					log.Infof("expectLinkUpdate: Unsupported link change type %d(%s), flags %x on interface %s",
