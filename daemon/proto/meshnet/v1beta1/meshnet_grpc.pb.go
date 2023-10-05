@@ -411,9 +411,10 @@ var Local_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	Remote_Update_FullMethodName             = "/meshnet.v1beta1.Remote/Update"
-	Remote_AddGRPCWireRemote_FullMethodName  = "/meshnet.v1beta1.Remote/AddGRPCWireRemote"
-	Remote_GRPCWireDownRemote_FullMethodName = "/meshnet.v1beta1.Remote/GRPCWireDownRemote"
+	Remote_Update_FullMethodName                = "/meshnet.v1beta1.Remote/Update"
+	Remote_AddGRPCWireRemote_FullMethodName     = "/meshnet.v1beta1.Remote/AddGRPCWireRemote"
+	Remote_GRPCWireDownRemote_FullMethodName    = "/meshnet.v1beta1.Remote/GRPCWireDownRemote"
+	Remote_LinkStateUpdateRemote_FullMethodName = "/meshnet.v1beta1.Remote/LinkStateUpdateRemote"
 )
 
 // RemoteClient is the client API for Remote service.
@@ -423,6 +424,7 @@ type RemoteClient interface {
 	Update(ctx context.Context, in *RemotePod, opts ...grpc.CallOption) (*BoolResponse, error)
 	AddGRPCWireRemote(ctx context.Context, in *WireDef, opts ...grpc.CallOption) (*WireCreateResponse, error)
 	GRPCWireDownRemote(ctx context.Context, in *WireDef, opts ...grpc.CallOption) (*WireDownResponse, error)
+	LinkStateUpdateRemote(ctx context.Context, in *LinkStateMessage, opts ...grpc.CallOption) (*BoolResponse, error)
 }
 
 type remoteClient struct {
@@ -460,6 +462,15 @@ func (c *remoteClient) GRPCWireDownRemote(ctx context.Context, in *WireDef, opts
 	return out, nil
 }
 
+func (c *remoteClient) LinkStateUpdateRemote(ctx context.Context, in *LinkStateMessage, opts ...grpc.CallOption) (*BoolResponse, error) {
+	out := new(BoolResponse)
+	err := c.cc.Invoke(ctx, Remote_LinkStateUpdateRemote_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // RemoteServer is the server API for Remote service.
 // All implementations must embed UnimplementedRemoteServer
 // for forward compatibility
@@ -467,6 +478,7 @@ type RemoteServer interface {
 	Update(context.Context, *RemotePod) (*BoolResponse, error)
 	AddGRPCWireRemote(context.Context, *WireDef) (*WireCreateResponse, error)
 	GRPCWireDownRemote(context.Context, *WireDef) (*WireDownResponse, error)
+	LinkStateUpdateRemote(context.Context, *LinkStateMessage) (*BoolResponse, error)
 	mustEmbedUnimplementedRemoteServer()
 }
 
@@ -482,6 +494,9 @@ func (UnimplementedRemoteServer) AddGRPCWireRemote(context.Context, *WireDef) (*
 }
 func (UnimplementedRemoteServer) GRPCWireDownRemote(context.Context, *WireDef) (*WireDownResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GRPCWireDownRemote not implemented")
+}
+func (UnimplementedRemoteServer) LinkStateUpdateRemote(context.Context, *LinkStateMessage) (*BoolResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method LinkStateUpdateRemote not implemented")
 }
 func (UnimplementedRemoteServer) mustEmbedUnimplementedRemoteServer() {}
 
@@ -550,6 +565,24 @@ func _Remote_GRPCWireDownRemote_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Remote_LinkStateUpdateRemote_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LinkStateMessage)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RemoteServer).LinkStateUpdateRemote(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Remote_LinkStateUpdateRemote_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RemoteServer).LinkStateUpdateRemote(ctx, req.(*LinkStateMessage))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Remote_ServiceDesc is the grpc.ServiceDesc for Remote service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -568,6 +601,10 @@ var Remote_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GRPCWireDownRemote",
 			Handler:    _Remote_GRPCWireDownRemote_Handler,
+		},
+		{
+			MethodName: "LinkStateUpdateRemote",
+			Handler:    _Remote_LinkStateUpdateRemote_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
