@@ -3,7 +3,6 @@ package grpcwire
 import (
 	"context"
 	"fmt"
-	"net"
 	"strings"
 	"time"
 
@@ -322,25 +321,25 @@ func syncLinkStateWithPeer(wireStatus grpcwirev1.GWireStatus) error {
 		updateLinkStateInDs               = false
 	)
 	// check if sync is required for this local interface
-	locInf, err := net.InterfaceByName(wireStatus.WireIfaceNameOnLocalNode)
+	link, err := netlink.LinkByName(wireStatus.WireIfaceNameOnLocalNode)
 	if err != nil {
 		grpcOvrlyLogger.Errorf("syncLinkStateWithPeer: Interface %s does not exist on local node, err %v",
 			wireStatus.WireIfaceNameOnLocalNode, err)
 		return err
 	}
-	if locInf.Flags&net.FlagUp == 1 && wireStatus.LinkState == int64(mpb.LinkState_DOWN) {
+	if link.Attrs().OperState == netlink.OperUp && wireStatus.LinkState == int64(mpb.LinkState_DOWN) {
 		// local interface is up and wirestatus is down, sync remote to up
 		linkState = linkStateType(mpb.LinkState_UP)
 		grpcOvrlyLogger.Infof("syncLinkStateWithPeer: Syncing remote wire interface (%d) to up because local"+
-			" wire interface (%s) is up but wirestatus is down",
+			" interface (%s) is up but wirestatus is down",
 			wireStatus.WireIfaceIdOnPeerNode, wireStatus.WireIfaceNameOnLocalNode)
 		err = updateGRPCLinkStateOnPeerNodeIntf(linkState, wireStatus.WireIfaceIdOnPeerNode, wireStatus.GWirePeerNodeIp)
 		updateLinkStateInDs = true
-	} else if locInf.Flags&net.FlagUp == 0 && wireStatus.LinkState == int64(mpb.LinkState_UP) {
+	} else if link.Attrs().OperState == netlink.OperLowerLayerDown && wireStatus.LinkState == int64(mpb.LinkState_UP) {
 		// local interface is down and wirestatus is up, sync remote to down
 		linkState = linkStateType(mpb.LinkState_DOWN)
 		grpcOvrlyLogger.Infof("syncLinkStateWithPeer: Syncing remote wire interface (%d) to down because local"+
-			" wire interface (%s) is down but wirestatus is up",
+			" interface (%s) is down but wirestatus is up",
 			wireStatus.WireIfaceIdOnPeerNode, wireStatus.WireIfaceNameOnLocalNode)
 		err = updateGRPCLinkStateOnPeerNodeIntf(linkState, wireStatus.WireIfaceIdOnPeerNode, wireStatus.GWirePeerNodeIp)
 		updateLinkStateInDs = true
