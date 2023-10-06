@@ -159,11 +159,11 @@ func CreatGRPCChan(link *mpb.Link, localPod *mpb.Pod, peerPod *mpb.Pod, localCli
 		return nil
 	})
 	if err != nil {
-		log.Errorf("Add-GRPC[%s]: Local end could not set MTU on container end interface %s, error:%v", localPod.Name, inContainerVeth.LinkName, err)
+		log.Errorf("Add-GRPC[%s]: Local end could not set MTU on container end interface %s, error: %v", localPod.Name, inContainerVeth.LinkName, err)
 		return err
 	}
 	if err = koko.SetMTU(hostEndVeth.LinkName, grpcLinkMtu); err != nil {
-		log.Errorf("Add-GRPC[%s]: Local end could not set MTU on host end interface %s, error:%v", localPod.Name, hostEndVeth.LinkName, err)
+		log.Errorf("Add-GRPC[%s]: Local end could not set MTU on host end interface %s, error: %v", localPod.Name, hostEndVeth.LinkName, err)
 		return err
 	}	
 

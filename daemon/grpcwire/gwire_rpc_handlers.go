@@ -141,11 +141,11 @@ func CreateUpdateGRPCWireRemoteTriggered(wireDef *mpb.WireDef, stopC chan struct
 		return nil
 	})
 	if err != nil {
-		grpcOvrlyLogger.Errorf("[ADD-WIRE:REMOTE-END] Remote end could not set MTU on container end interface %s, error:%v", inContainerVeth.LinkName, err)
+		grpcOvrlyLogger.Errorf("[ADD-WIRE:REMOTE-END] Remote end could not set MTU on container end interface %s, error: %v", inContainerVeth.LinkName, err)
 		return nil, err
 	}
 	if err = koko.SetMTU(hostEndVeth.LinkName, getGrpcLinkMtu()); err != nil {
-		grpcOvrlyLogger.Errorf("[ADD-WIRE:REMOTE-END] Remote end could not set MTU on host end interface %s, error:%v", hostEndVeth.LinkName, err)
+		grpcOvrlyLogger.Errorf("[ADD-WIRE:REMOTE-END] Remote end could not set MTU on host end interface %s, error: %v", hostEndVeth.LinkName, err)
 		return nil, err
 	}
 	grpcOvrlyLogger.Infof("[ADD-WIRE:REMOTE-END] Trigger from %s:%d : Successfully created remote pod to node vEth pair %s@%s <--> %s(%d).",
