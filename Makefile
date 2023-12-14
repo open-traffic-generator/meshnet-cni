@@ -80,6 +80,7 @@ e2e: wait-for-meshnet
 	kubectl exec r1 -- ping -c 1 12.12.12.2
 	kubectl exec r1 -- ping -c 1 13.13.13.3
 	kubectl exec r2 -- ping -c 1 23.23.23.3
+	kubectl delete -f tests/3node.yml
 
 .PHONY: e2e-mlink
 ## Run the end-to-end test with multi-links betwwen a pair of nodes. 
@@ -98,6 +99,7 @@ e2e-mlink: wait-for-meshnet
 	kubectl exec r2 -n mlink -- ping -c 1 31.31.31.2
 	kubectl exec r2 -n mlink -- ping -c 1 32.32.32.2
 	kubectl exec r2 -n mlink -- ping -c 1 33.33.33.2
+	kubectl delete -f tests/3node-mlink.yml
 
 wait-for-meshnet:
 	kubectl wait --for condition=Ready pod -l name=meshnet -n meshnet   
