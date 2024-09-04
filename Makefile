@@ -38,7 +38,7 @@ local-clean:
 ## Build the docker image
 docker:
 	@echo 'Creating docker image ${DOCKER_IMAGE}:${COMMIT}'
-	docker buildx create --use --name=multiarch --driver-opt network=host --buildkitd-flags '--allow-insecure-entitlement network.host' --node multiarch && \
+	docker buildx create --use --name=multiarch --buildkitd-flags '--allow-insecure-entitlement network.host' --node multiarch && \
 	docker buildx build --load \
 	--build-arg LDFLAGS=${LDFLAGS} \
 	--platform "linux/amd64" \
