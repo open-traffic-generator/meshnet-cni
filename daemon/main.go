@@ -76,7 +76,6 @@ func main() {
 
 	// restrict max worker threads to a defined number. worker thread will process interface state change
 	// event
-	// Fan-out: Create worker goroutines
 	for i := 0; i < MAX_WORKER_THREAD; i++ {
 		go expectLinkUpdate(chLink)
 	}
@@ -104,8 +103,8 @@ func expectLinkUpdate(ch <-chan netlink.LinkUpdate) bool {
 				var linkState int32 = 0
 				if update.Link.Attrs().OperState == netlink.OperUp {
 					linkState = int32(mpb.LinkState_UP)
-				} else if update.Link.Attrs().OperState == netlink.OperLowerLayerDown &&
-					update.IfInfomsg.Flags&unix.IFF_LOWER_UP == 0 {
+				} else if (update.Link.Attrs().OperState == netlink.OperLowerLayerDown || update.Link.Attrs().OperState == netlink.OperDown) &&
+					(update.IfInfomsg.Flags&unix.IFF_LOWER_UP == 0) {
 					linkState = int32(mpb.LinkState_DOWN)
 				} else {
 					log.Infof("expectLinkUpdate: Unsupported link change type %d(%s), flags %x on interface %s",

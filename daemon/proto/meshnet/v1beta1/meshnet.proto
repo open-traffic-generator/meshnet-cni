@@ -120,10 +120,11 @@ message GenerateNodeInterfaceNameResponse {
 }
 
 enum LinkState {
-  DOWN = 0;
-  DOWN_UPDATING = 1;
-  UP = 2;
-  UP_UPDATING = 3;
+  NONE = 0;
+  DOWN = 1;
+  DOWN_UPDATING = 2;
+  UP = 3;
+  UP_UPDATING = 4;
 }
 
 message LinkStateMessage {    
